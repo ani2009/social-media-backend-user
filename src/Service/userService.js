@@ -1,6 +1,7 @@
 var axios = require('axios')
 const userDao = require('../Dao/userDao')
 const authentication = require('../Utils/authentiationUtils')
+const bcrypt = require('bcrypt');
 
 async function getAllUser() {
     let result = await userDao.getAllUser()
@@ -17,19 +18,25 @@ async function createUser(userDetails, reqHeader) {
         let exsistedUser = await userDao.getSingleUser(userDetails.email)
         //retuns null if exsist
         if (!exsistedUser) {
-            let result = await userDao.createUser(userDetails)
-            console.log("result of createUser" + JSON.stringify(result))
-            if (result.acknowledged && result.insertedId) {
-                return {
-                    status: 'success',
-                    message: 'user added successfully with email id ' + userDetails.email
-                }
-            } else {
-                return {
-                    status: 'failure',
-                    message: 'user not addded'
-                }
-            }
+            return new Promise((resolve, reject)=>{
+                bcrypt.hash(userDetails.password, 9,async function (err, hash) {
+                    userDetails.password = hash
+                    console.log("create user", userDetails )
+                    let result = await userDao.createUser(userDetails)
+
+                    if (result.acknowledged && result.insertedId) {
+                        resolve({
+                            status: 'success',
+                            message: 'user added successfully with email id ' + userDetails.email
+                        })
+                    } else {
+                        resolve({
+                            status: 'failure',
+                            message: 'user not addded'
+                        })
+                    }
+                })
+            })
         } else {
             return {
                 status: 'failure',
@@ -120,20 +127,27 @@ async function deleteSingleUser(userEmail, reqHeader) {
 }
 
 async function userLogin(userDetails) {
-    let result = await userDao.userLogin(userDetails)
-    if (result) {
-        jwt = authentication.genrateJWT(userDetails.email)
-        console.log(jwt)
-        return {
-            status: 'success',
-            Token: jwt
-        }
-    } else {
-        return {
-            status: 'failure',
-            message: 'Incorrect email or password'
-        }
-    }
+    let exsistedUser = await userDao.getSingleUser(userDetails.email)
+    
+    return new Promise((resolve, reject)=>{
+        bcrypt.compare(userDetails.password, exsistedUser.password, function(err, result) {
+            if (result) {
+                jwt = authentication.genrateJWT(userDetails.email)
+                //encrytiom
+                console.log(jwt)
+                resolve({
+                    status: 'success',
+                    Token: jwt
+                })
+            } else {
+                resolve({
+                    status: 'failure',
+                    message: 'Incorrect email or password'
+                })
+            }
+        })
+    })
+
 }
 
 // *******************************POST*********************************************
@@ -270,7 +284,7 @@ async function createFollower(user, reqHeader) {
         "email": jwt.user_email,
         "following": user
     }
-    console.log("follodata"+followData)
+    console.log("follodata" + followData)
     let result = await userDao.createFollower(followData)
     console.log("result of create" + JSON.stringify(result))
     return result
@@ -290,4 +304,4 @@ async function getFollowing(user) {
 
 
 
-module.exports = { getAllUser, createUser, getSingleUser, updateSingleUserName, deleteSingleUser, userLogin, getUserPost, createUserPost, updateUserPost, deleteUserPostWithId, getAllUserPost, searchHistory, getFollowers, createFollower, getFollowing};
+module.exports = { getAllUser, createUser, getSingleUser, updateSingleUserName, deleteSingleUser, userLogin, getUserPost, createUserPost, updateUserPost, deleteUserPostWithId, getAllUserPost, searchHistory, getFollowers, createFollower, getFollowing };
